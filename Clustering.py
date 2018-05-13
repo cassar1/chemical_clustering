@@ -1,13 +1,16 @@
 import time
 from numpy.f2py.auxfuncs import throw_error
-from rdkit.ML.Cluster import Butina, Murtagh
+from rdkit.ML.Cluster import Butina, Murtagh, ClusterUtils
 from sklearn.cluster import KMeans
 from MolecularRepresentations import *
 from sklearn.cluster import AgglomerativeClustering
+import jarvispatrick
 
 from Helpers import *
 import chemfp
 from chemfp import search
+from scipy.cluster.hierarchy import dendrogram,linkage
+import pylab
 
 # Butina Clustering Algorithm
 def ButinaClusteringOriginal(dists, nfps):
@@ -151,9 +154,35 @@ def WardsClustering(dists, nfps):
     print "time taken: ", time.time() - start_time
     return c_tree
 
+def WardsClusteringScipy(dists):
+    print "-------------------------------------------------"
+    print "starting Wards clustering"
+    start_time = time.time()
+    #print dists
+    c_tree = linkage(dists, method='ward')
 
+    print "time taken: ", time.time() - start_time
+    print c_tree
+    return c_tree
+
+def ward_clustering_sklearn(num_clusters, molecules_array):
+    print "-------------------------------------------------"
+    print "starting Wards clustering"
+    start_time = time.time()
+    ward = AgglomerativeClustering(n_clusters=num_clusters, linkage='ward', affinity="euclidean", compute_full_tree=True,memory="dataset/tree").fit(molecules_array)
+    print "time taken: ", time.time() - start_time
+
+    labels = ward.labels_
+    return labels
+
+def OutputDendrogram(clusters):
+    dendrogram(clusters,orientation='top', truncate_mode='level', p=10, show_contracted=True)
+    pylab.title("Hierarchical Clustering Dendrogram")
+    pylab.ylabel("Distance between cluster centroids")
+    pylab.xlabel("Data points")
+    pylab.show()
 # get clusters at a particular hierarchy level
-def GetHierarchicalLevel(cluster, levelNeeded, currentLevel=0):
+'''def GetHierarchicalLevel(cluster, levelNeeded, currentLevel=0):
     result_cluster = []
     # if this is the level required, or this level has no children, return the data points
     if ((currentLevel == levelNeeded) or (cluster.GetData() is not None)):
@@ -171,4 +200,110 @@ def GetHierarchicalLevel(cluster, levelNeeded, currentLevel=0):
         else:
             # if list of clusters are returned, then extend list
             result_cluster.extend(result)
-    return result_cluster
+    return result_cluster'''
+
+
+def get_hierarchical_level(cluster, levelNeeded):
+    cluster_result = []
+    list_clusters = []
+    list_clusters.append(cluster)
+
+    for current_level in range(1,levelNeeded):
+        cluster_to_split = max((cl for cl in list_clusters if len(cl.GetChildren()) > 0), key=lambda x:x.GetMetric())
+        list_clusters.remove(cluster_to_split)
+        list_clusters.extend(cluster_to_split.GetChildren())
+
+    for cluster in list_clusters:
+        cluster_data = []
+        points = cluster.GetPoints()
+        for point in points:
+            cluster_data.append(point.GetData())
+        cluster_result.append(cluster_data)
+    return cluster_result
+
+def get_hierarchical_level1(cluster, levelNeeded):
+    cluster_result = []
+    list_clusters = ClusterUtils.SplitIntoNClusters(cluster, levelNeeded, True)
+
+    for cluster in list_clusters:
+        cluster_data = []
+        points = cluster.GetPoints()
+        for point in points:
+            cluster_data.append(point.GetData())
+        cluster_result.append(cluster_data)
+    return cluster_result
+    #for cluster in list_clusters:
+    #    res = GetGroupMembers(cluster)
+    #    cluster_result.append(res)
+    #return cluster_result
+
+def GetGroupMembers( grp, memberlist=[] ):
+    for child in grp.GetChildren():
+        if (child.GetData() is None ):
+            GetGroupMembers( child, memberlist )
+        else:
+            memberlist.append( child.GetData() )
+
+    return memberlist
+
+# Jarvis Patrick
+def get_ecfp_sim( fp1, fp2 ):
+    #fp1 = AllChem.GetMorganFingerprintAsBitVect( m1, 2 )
+    #fp2 = AllChem.GetMorganFingerprintAsBitVect( m2, 2 )
+    tc = DataStructs.TanimotoSimilarity( fp1, fp2 )
+    return tc
+
+def jp_clustering(mergedFingerprints, k, k_min):
+    print "-------------------------------------------------"
+    print "starting Jarvis Patrick clustering"
+    start_time = time.time()
+    cluster_gen = jarvispatrick.JarvisPatrick(mergedFingerprints, get_ecfp_sim)
+    # cluster is dictionary.
+    # key is index of cluster, value is list of molecules(elements).
+    cluster = cluster_gen(k, k_min)  # (k and k-min)
+    print "time taken: ", time.time() - start_time
+
+    print ("number of clusters ", len(cluster.items()))
+    #total_molecules = 0
+    #for k, v in cluster.items():
+    #    total_molecules += len(v)
+    #    print (k, " Molecules ", len(v), " ", v)
+    #print ("clustered molecules ", total_molecules)
+    cluster_result = [v for k,v in cluster.items()]
+    return cluster_result
+
+
+# LEADER Clustering
+def leader_algorithm(mergedFingerprints, threshold):
+    print "-------------------------------------------------"
+    print "starting Leader clustering"
+    print len(mergedFingerprints)
+    start_time = time.time()
+    random.shuffle(mergedFingerprints)
+    clusters = []
+
+    for fp in mergedFingerprints:
+        added_to_cluster = False
+
+        for existing_cluster in clusters:
+            similarity = DataStructs.FingerprintSimilarity(fp, existing_cluster[0],
+                                                           metric=DataStructs.TanimotoSimilarity)
+            if similarity >= threshold:
+                existing_cluster.append(fp)
+                added_to_cluster = True
+                break
+
+        if added_to_cluster == False:
+            new_cluster = []
+            new_cluster.append(fp)
+            clusters.append(new_cluster)
+
+    print "time taken: ", time.time() - start_time
+
+    print ("number of clusters ", len(clusters))
+    total_mols = 0
+    for cluster in clusters:
+        total_mols += len(cluster)
+
+    return clusters
+

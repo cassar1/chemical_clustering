@@ -7,6 +7,10 @@ import copy
 import numpy
 from chemfp import search
 import random
+from rdkit.ML.Cluster import ClusterVis, Resemblance
+from rdkit.DataStructs.BitVect import BitVect
+import csv
+from rdkit.Chem.rdmolfiles import SmilesWriter
 
 # The results of the Taylor-Butina clustering
 class ClusterResults(object):
@@ -25,27 +29,6 @@ def combine_clusters(cluster_results):
     clusters.extend(false_singletons)
 
     return clusters
-
-
-def distance_matrix(arena):
-    n = len(arena)
-
-    # Start off a similarity matrix with 1.0s along the diagonal
-    similarities = numpy.identity(n, "d")
-
-    ## Compute the full similarity matrix.
-    # The implementation computes the upper-triangle then copies
-    # the upper-triangle into lower-triangle. It does not include
-    # terms for the diagonal.
-    results = search.threshold_tanimoto_search_symmetric(arena, threshold=0.0)
-
-    # Copy the results into the NumPy array.
-    for row_index, row in enumerate(results.iter_indices_and_scores()):
-        for target_index, target_score in row:
-            similarities[row_index, target_index] = target_score
-
-    # Return the distance matrix using the similarity matrix
-    return 1.0 - similarities
 
 
 # output cluster results object
@@ -158,6 +141,59 @@ def CalcSimilarities(fps):
     print "time taken: ", time.time() - start_time
     return dists, dists_2d
 
+def calc_distance_1d(fps):
+    #first generate the distance matrix:
+    print "starting distance calculations"
+    start_time = time.time()
+    dists = []
+
+    nfps = len(fps)
+    for i in range(1,nfps):
+        #sims = DataStructs.BulkTanimotoSimilarity(fps[i],fps[:i])
+        #dists.extend([((1-x)*(1-x)) for x in sims])
+
+        for j in range(i, nfps):
+            sim = DataStructs.FingerprintSimilarity(fps[i], fps[j], metric=DataStructs.TanimotoSimilarity)
+            dists.extend([1 - sim])
+        #dists.extend([(1 - x) for x in sims])
+
+    print "time taken: ", time.time() - start_time
+    return dists
+
+
+def calc_distance_2d(fps):
+    # first generate the distance matrix:
+    print "starting distance calculations"
+    start_time = time.time()
+    dists_2d = []
+
+    nfps = len(fps)
+    for i in range(1, nfps):
+        sims = DataStructs.BulkTanimotoSimilarity(fps[i], fps[:i])
+        dists_2d.append(sims)
+
+    print "time taken: ", time.time() - start_time
+    return dists_2d
+
+# euclidean distance 1d
+def calc_euc_distance_1d(fps):
+    #first generate the distance matrix:
+    print "starting distance calculations"
+    start_time = time.time()
+    dists = []
+    row_similarities = []
+    nfps = len(fps)
+    for i in range(1,nfps):
+        row_similarities = []
+        for j in range(0,i):
+            distance = fps[i].BitVect.EuclideanDistance(fps[j].ToBinary())
+            row_similarities.append(distance)
+
+        dists.extend(row_similarities)
+        #print sys.getsizeof(dists)
+
+    print "time taken: ", time.time() - start_time
+    return dists
 
 # calculate neighbour list using RDKIT
 #adapted from RDKIT BUTINA Algorithm
@@ -205,8 +241,12 @@ def output_bit_strings(input_file):
     print "non duplicates = ", len(activeDescriptors) - numberDuplicated
     print numberDuplicated, " Duplicated Found"
 
+
+# ARENA HELPERS
+
+
 def distance_matrix(arena):
-    print "Here 1"
+    start_time = time.time()
     n = len(arena)
     # Start off a similarity matrix with 1.0s along the diagonal
     similarities = numpy.identity(n, "d")
@@ -215,12 +255,68 @@ def distance_matrix(arena):
     # The implementation computes the upper-triangle then copies
     # the upper-triangle into lower-triangle. It does not include
     # terms for the diagonal.
-    results = search.threshold_tanimoto_search_symmetric(arena, threshold=0.0,include_lower_triangle=False)
+    results = search.threshold_tanimoto_search_symmetric(arena, threshold=0.0,include_lower_triangle=True)
 
+    similarity_list = [[(1 - score) for score in scores] for (i, scores) in enumerate(results.iter_scores())]
     # Copy the results into the NumPy array.
-    for row_index, row in enumerate(results.iter_indices_and_scores()):
-        for target_index, target_score in row:
-            similarities[row_index, target_index] = target_score
+    #for row_index, row in enumerate(results.iter_indices_and_scores()):
+    #    for target_index, target_score in row:
+    #        similarities[row_index, target_index] = target_score
 
+    print "time taken to calculate ", n, " : ", time.time() - start_time
     # Return the distance matrix using the similarity matrix
-    return 1.0 - similarities
+    return similarity_list
+
+
+def distance_matrix_1d(arena):
+    print "Start calculating distance matrix"
+    start_time = time.time()
+    n = len(arena)
+
+    # Compute the full similarity matrix.
+    # The implementation computes the upper-triangle then copies
+    # the upper-triangle into lower-triangle. It does not include
+    # terms for the diagonal.
+    results = search.threshold_tanimoto_search_symmetric(arena, threshold=0.0, include_lower_triangle=False)
+
+    dists = []
+
+    for row_index, row in enumerate(results.iter_indices_and_scores()):
+        scores = [target_score for target_index, target_score in row]
+        dists.extend([1 - x for x in scores])
+        print sys.getsizeof(dists)
+
+    print "time taken to calculate ", n, " : ", time.time() - start_time
+    # Return the distance matrix using the similarity matrix
+    return dists
+
+
+def DrawClusterDendrogram(cluster):
+    ClusterVis.DrawClusterTree(cluster)
+
+
+def change_indeces_to_smiles(indeces_clusters, mols):
+    mol_clusters = []
+    for indeces in indeces_clusters:
+        cluster = [mols[i] for i in indeces]
+        mol_clusters.append(cluster)
+    return mol_clusters
+
+
+# output smiles and cluster id
+
+def output_cluster_results(clusters):
+    writer = SmilesWriter('../mols/resultsSerial/resultsclsmi.smi')
+    writer.SetProps(['Cluster'])
+
+    cluster_id = 0
+    for cluster in clusters:
+        for mol in cluster:
+            mol.SetProp('Cluster', str(cluster_id))
+            writer.write(mol)
+        cluster_id += 1
+    writer.close()
+
+    #with open("results/filename.csv", "wb") as f:
+    #    writer = csv.writer(f)
+    #    writer.writerows(clusters)

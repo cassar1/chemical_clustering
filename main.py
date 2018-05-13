@@ -10,7 +10,9 @@ from itertools import groupby
 BUTINA = False
 KMEANS = False
 WARDS = False
-RDKIT = False
+RDKIT = True
+JPCLUSTERING = False
+LEADER = True
 
 
 def RdKitButina():
@@ -28,10 +30,41 @@ def RdKitButina():
     print "Qpi for Butina: ", qpi
     print "-------------------------------------------------------------------------------------------"
 
+
+def jp_clustering_setup(percentage_mol):
+    #https://iwatobipen.wordpress.com/2016/03/13/jp-clustering-with-python-and-rdkit/
+    activeDescriptors = read_fingerprints('dataset/THB/actives_final.sdf')
+    decoyDescriptors = read_fingerprints('dataset/AMPC/actives_final.sdf')
+    activeDescriptorsSubset, decoyDescriptorsSubset = getPercentageMolecules(percentage_mol, activeDescriptors, decoyDescriptors)
+    print "Clustering ", len(activeDescriptorsSubset), " active molecules and ", len(decoyDescriptorsSubset), " decoy molecules"
+    mergedFingerprints = activeDescriptorsSubset[:]
+    mergedFingerprints.extend(decoyDescriptorsSubset)
+    clusters = jp_clustering(mergedFingerprints, 16, 4)
+
+    qpi = calculate_qpi(clusters, activeDescriptorsSubset, len(mergedFingerprints),  "RDKIT")
+    print "Qpi for JP Clustering: ", qpi
+    print "-------------------------------------------------------------------------------------------"
+
+def leader_clustering_setup(actives_file, decoys_file, percentage_mol, threshold):
+    activeDescriptors = read_fingerprints(actives_file)
+    decoyDescriptors = read_fingerprints(decoys_file)
+    activeDescriptorsSubset, decoyDescriptorsSubset = getPercentageMolecules(percentage_mol, activeDescriptors, decoyDescriptors)
+    print "Clustering ", len(activeDescriptorsSubset), " active molecules and ", len(decoyDescriptorsSubset), " decoy molecules"
+    mergedFingerprints = activeDescriptorsSubset[:]
+    mergedFingerprints.extend(decoyDescriptorsSubset)
+    clusters = leader_algorithm(mergedFingerprints, threshold)
+
+    qpi = calculate_qpi(clusters, activeDescriptorsSubset, len(mergedFingerprints),  "RDKIT")
+    print "Qpi for Leader Clustering: ", qpi
+    print "-------------------------------------------------------------------------------------------"
+
+
 if __name__ == "__main__":
     #RdKitButina()
-
-    percentage_list = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
+    actives_file = 'dataset/THB/actives_final.sdf'
+    decoys_file = 'dataset/THB/decoys_final.sdf'
+    percentage_list = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
+    #percentage_list = [1]
     if BUTINA:
         if not RDKIT:
             print "CHEMFP"
@@ -66,19 +99,19 @@ if __name__ == "__main__":
                 print "-----------------------------------------------------------------------------------"
             #print "RDKIT"
         if RDKIT:
-            activeDescriptors = read_fingerprints('dataset/actives_final.sdf')
-            decoyDescriptors = read_fingerprints('dataset/decoys_final.sdf')
+            activeDescriptors = read_fingerprints(actives_file)
+            decoyDescriptors = read_fingerprints(decoys_file)
             for perc in percentage_list:
-                activeDescriptorsSubset, decoyDescriptorsSubset = getPercentageMolecules(perc, activeDescriptors, decoyDescriptors)
+                activeDescriptorsSubset, decoyDescriptorsSubset = getPercentageMolecules(perc, activeDescriptors, decoyDescriptors,shuffle=True)
 
-                print "Clustering ", len(activeDescriptorsSubset), " active molecules and ", len(decoyDescriptorsSubset), " decoy molecules"
+                print "Clustering ",perc ," percentage ", len(activeDescriptorsSubset), " active molecules and ", len(decoyDescriptorsSubset), " decoy molecules"
                 mergedFingerprints = activeDescriptorsSubset[:]
                 mergedFingerprints.extend(decoyDescriptorsSubset)
                 print "Calculating neighbours"
                 #dists, dists_2d = CalcSimilarities(mergedFingerprints)
                 tuple_list, neighbours_list = get_neighbours_list(mergedFingerprints, 0.8)
                 print "Finished calculating neighbours"
-                
+
                 # Butina Clustering
                 clusters = ButinaClustering(tuple_list, neighbours_list, len(mergedFingerprints))
                 #for key, group in groupby(clusters, key=lambda x: len(x)):
@@ -87,31 +120,6 @@ if __name__ == "__main__":
                 print "Qpi for Butina: ", qpi
                 print "-----------------------------------------------------------------------------------"
 
-    #        if not RDKIT:
-    #            arena_actives = read_chemfp("dataset/actives_final.sdf")
-    #            arena_all = read_chemfp("dataset/merged.sdf")
-
-
-    #            arena_actives_subset, arena_subset = get_arena_percentage(0.8, arena_actives, arena_all)
-    #            print "Active Subset Size ", len(arena_actives_subset)
-    #            print "Total Subset Size ", len(arena_subset)
-
-    #            cluster_result = taylor_butina_cluster(arena_subset, 0.8)
-    #            clusters = combine_clusters(cluster_result)
-    #            qpi = calculate_qpi(clusters, arena_actives, len(arena_subset), "CHEMFP_ID")
-    #            print "Qpi for clustering Butina: ", qpi
-
-            #count = 0
-            #print len(arena_all)
-            #print len(arena_actives)
-            #for mol in arena_all:
-            #    mol_id = mol[0]
-            #    # print mol_id
-            #    active_mol = arena_actives.get_by_id(id=mol_id)
-            #    if active_mol is not None:
-            #        print "Found active ", mol
-            #        count = count + 1
-            #print "found ", count, " actives "
     if KMEANS:
         # KMEANS Clustering
         labels = KMeansClustering(mergedFingerprints)
@@ -119,18 +127,72 @@ if __name__ == "__main__":
         print "Qpi for clustering KMEANS: ", qpi
 
     if WARDS:
-        # Wards Clustering
-        c_tree = WardsClustering(dists, len(mergedFingerprints))
+        #percentage_mols = 0.01
+        if not RDKIT:
+            print "CHEMFP"
+            arena_actives = read_chemfp(actives_file)
+            arena_all = read_chemfp(decoys_file)
+            arena_actives_subset, arena_subset = get_arena_percentage(0.1, arena_actives, arena_all)
 
-        ward_clusters = GetHierarchicalLevel(c_tree[0], 3)
-        qpi = calculateQPIWithIndeces(ward_clusters, mergedFingerprints, activeDescriptorsSubset, decoyDescriptorsSubset)
-        print "Qpi for clustering WARD level 3 : ", qpi
+            dists = distance_matrix_1d(arena_subset)
+            #dists2 = distance_matrix(arena_subset)
+            c_tree = WardsClustering(dists, len(arena_subset))
 
-        ward_clusters = GetHierarchicalLevel(c_tree[0], 4)
-        qpi = calculateQPIWithIndeces(ward_clusters, mergedFingerprints, activeDescriptorsSubset, decoyDescriptorsSubset)
-        print "Qpi for clustering WARD level 4 : ", qpi
+            for i in range(1,len(arena_subset),100):
+                ward_clusters = get_hierarchical_level(c_tree[0], i)
+                qpi = calculateQPIWithIndeces(ward_clusters, arena_subset, arena_actives_subset, "CHEMFP_ID")
+                print "Qpi for clustering WARD level ", i ," : ", qpi
+            #c_tree = WardsClusteringScipy(dists, len(arena_subset))
+            #OutputDendrogram(c_tree)
+        if RDKIT:
+            SKLEARN = False
+            for perc in percentage_list:
+                activeDescriptors = read_fingerprints(actives_file)
+                decoyDescriptors = read_fingerprints(decoys_file)
+                activeDescriptorsSubset, decoyDescriptorsSubset = getPercentageMolecules(perc, activeDescriptors,
+                                                                                         decoyDescriptors)
 
-        ward_clusters = GetHierarchicalLevel(c_tree[0], 5)
-        qpi = calculateQPIWithIndeces(ward_clusters, mergedFingerprints, activeDescriptorsSubset, decoyDescriptorsSubset)
-        print "Qpi for clustering WARD level 5 : ", qpi
+                print "Clustering ", len(activeDescriptorsSubset), " active molecules and ", len(
+                    decoyDescriptorsSubset), " decoy molecules"
+                mergedFingerprints = activeDescriptorsSubset[:]
+                mergedFingerprints.extend(decoyDescriptorsSubset)
+
+                if SKLEARN:
+                    num_clusters = len(mergedFingerprints)
+                    for clusters in range(50,len(mergedFingerprints),10):
+                        print clusters, " clusters"
+                        fingerprintsToNPArr(mergedFingerprints)
+                        labels = ward_clustering_sklearn(clusters, mergedFingerprints)
+
+                        qpi = calculateQPIWithLabels(labels, clusters, mergedFingerprints, activeDescriptorsSubset, "RDKIT")
+                        print "Qpi for clustering Wards: ", qpi
+                else:
+                    dists = calc_distance_1d(mergedFingerprints)
+
+                    c_tree = WardsClustering(dists, len(mergedFingerprints))
+                    print "Finished clustering"
+
+                    # Wards Clustering
+                    if perc == 2:
+                        i = 10
+
+                        #for i in range(2,len(mergedFingerprints),10):
+                        while i < len(mergedFingerprints):
+                            print i
+                            ward_clusters = get_hierarchical_level1(c_tree[0], i)
+                            qpi = calculateQPIWithIndeces(ward_clusters, mergedFingerprints, activeDescriptorsSubset, "RDKIT")
+                            if qpi > 0.5:
+                                print "Qpi for clustering WARD level ", i ," with ", len(ward_clusters), " clusters : ", qpi
+                                print "-----------------------------------------------------------------------------------------"
+                                i += 10
+                            else:
+                                i += 10
+    if JPCLUSTERING:
+        for perc in percentage_list:
+            jp_clustering_setup(perc)
+
+    if LEADER:
+        for perc in percentage_list:
+            leader_clustering_setup(actives_file, decoys_file, perc, 0.5)
+
 

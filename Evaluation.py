@@ -47,13 +47,13 @@ def calculatePercentage(num1, num2):
 
 
 # calculation of QPI having labels(label represents clusterid)
-def calculateQPIWithLabels(labels, num_clusters, mergedFingerprints, activeDescriptorsSubset,decoyDescriptorsSubset):
+def calculateQPIWithLabels(labels, num_clusters, mergedFingerprints, activeDescriptorsSubset,comparison_type):
     clusters = []
     for x in range(0, num_clusters):
         indeces = np.where(labels == (x))[0]
         cluster = [mergedFingerprints[i] for i in indeces]
         clusters.append(cluster)
-    return calculate_qpi(clusters, activeDescriptorsSubset,decoyDescriptorsSubset)
+    return calculate_qpi(clusters, activeDescriptorsSubset, len(mergedFingerprints),comparison_type)
 
 # calculate QPI passing as parameter, clusters with index of each molecule in cluster
 def calculateQPIWithIndeces(indeces_clusters, mergedFingerprints, activeDescriptorsSubset,comparison_type):
@@ -64,6 +64,7 @@ def calculateQPIWithIndeces(indeces_clusters, mergedFingerprints, activeDescript
             clusters.append(cluster)
         elif comparison_type == "CHEMFP_ID":
             #merged fingerprints is an arena in chemfp
+            #print [mergedFingerprints[i] for i in indeces]
             cluster = [mergedFingerprints[i] for i in indeces]
             clusters.append(cluster)
     return calculate_qpi(clusters, activeDescriptorsSubset, len(mergedFingerprints), comparison_type)
@@ -93,6 +94,48 @@ def calculate_qpi(clusters, active_descriptors, total_number_molecules, comparis
             q += num_decoys
         else:
             r += num_actives
+    qpi = p / (p + q + r + s)
+
     print "p", p , " q " , q,  " r ", r , " s ", s
     print "Total Actives " ,total_actives
-    return p / (p + q + r + s)
+    return qpi
+
+#region PRECISION RECALL F1
+
+def calculate_f1(clusters, active_fps):
+    a = 0
+    n = 0
+    A = len(active_fps)
+
+    precision = 0
+    recall = 0
+    fscore = 0
+    results = []
+
+    max_fscore = 0
+    max_result = []
+    cluster_id = 0
+    for cluster in clusters:
+        n = len(cluster)
+        num_actives, num_decoys = getNumberOfMoleculesFP(cluster, active_fps, "RDKIT")
+        a = num_actives
+
+        if DEBUG:
+            print "Actives ", num_actives, " Decoys ", num_decoys
+        precision = a/n
+        recall = a/A
+
+        if precision != 0 and recall != 0:
+            fscore = (2*precision * recall)/(precision + recall)
+        else:
+            fscore = 0
+
+        if fscore > max_fscore:
+            max_fscore = fscore
+            max_result = [precision, recall, fscore]
+
+        results.append([cluster_id, precision, recall, fscore, num_actives, num_decoys])
+
+
+    return max_result, results
+#endregion PRECISION RECALL F1
