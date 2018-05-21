@@ -106,7 +106,7 @@ def calculate_f1(clusters, active_fps):
     a = 0
     n = 0
     A = len(active_fps)
-
+    total_actives = 0
     precision = 0
     recall = 0
     fscore = 0
@@ -118,6 +118,7 @@ def calculate_f1(clusters, active_fps):
     for cluster in clusters:
         n = len(cluster)
         num_actives, num_decoys = getNumberOfMoleculesFP(cluster, active_fps, "RDKIT")
+        total_actives += num_actives
         a = num_actives
 
         if DEBUG:
@@ -136,6 +137,38 @@ def calculate_f1(clusters, active_fps):
 
         results.append([cluster_id, precision, recall, fscore, num_actives, num_decoys])
 
-
+    print "Total Actives ", total_actives
     return max_result, results
 #endregion PRECISION RECALL F1
+
+#region ENRICHMENT FACTOR
+def calculate_enrichment(clusters, active_fps):
+    dataset_actives = len(active_fps)
+    dataset_size = 0
+
+    for cluster in clusters:
+        dataset_size += len(cluster)
+
+    print "dataset actives, ", dataset_actives
+    print "dataset size, ", dataset_size
+    results = []
+
+    max_ef = 0
+    cluster_id = 0
+    for cluster in clusters:
+        cluster_size = len(cluster)
+        num_actives, num_decoys = getNumberOfMoleculesFP(cluster, active_fps, "RDKIT")
+
+        if DEBUG:
+            print "Actives ", num_actives, " Decoys ", num_decoys
+
+        enrichment = (num_actives/dataset_actives)/(cluster_size/dataset_size)
+
+        if enrichment > max_ef:
+            max_ef = enrichment
+
+        results.append([cluster_id, enrichment, num_actives, num_decoys])
+        cluster_id += 1
+
+    return max_ef, results
+#endregion ENRICHMENT FACTOR

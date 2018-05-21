@@ -305,8 +305,10 @@ def change_indeces_to_smiles(indeces_clusters, mols):
 
 # output smiles and cluster id
 
-def output_cluster_results(clusters):
-    writer = SmilesWriter('../mols/resultsSerial/resultsclsmi.smi')
+def output_cluster_results(clusters, name, subdirectory = None):
+    if subdirectory is not None:
+        subdirectory = subdirectory + '/'
+    writer = SmilesWriter('../mols/resultsSerial/' + subdirectory + name +'.smi')
     writer.SetProps(['Cluster'])
 
     cluster_id = 0

@@ -68,8 +68,10 @@ def custom_butina(tLists , nbrLists, nPts, reordering=False):
                 tLists[x] = (len(nbrLists[y1]), y1)
             # now reorder the list
             tLists.sort(reverse=True)
-        res.append(tuple(tRes))
-    return tuple(res)
+        #res.append(tuple(tRes))
+        res.append(tRes)
+    #return tuple(res)
+    return res
 
 # Taylor butina using chemfp
 def taylor_butina_cluster(arena, threshold):
@@ -246,11 +248,12 @@ def GetGroupMembers( grp, memberlist=[] ):
 
     return memberlist
 
-# Jarvis Patrick
+#region Jarvis Patrick
 def get_ecfp_sim( fp1, fp2 ):
     #fp1 = AllChem.GetMorganFingerprintAsBitVect( m1, 2 )
     #fp2 = AllChem.GetMorganFingerprintAsBitVect( m2, 2 )
-    tc = DataStructs.TanimotoSimilarity( fp1, fp2 )
+    #tc = DataStructs.TanimotoSimilarity( fp1, fp2 )
+    tc = DataStructs.FingerprintSimilarity(fp1, fp2,metric=DataStructs.TanimotoSimilarity)
     return tc
 
 def jp_clustering(mergedFingerprints, k, k_min):
@@ -262,7 +265,6 @@ def jp_clustering(mergedFingerprints, k, k_min):
     # key is index of cluster, value is list of molecules(elements).
     cluster = cluster_gen(k, k_min)  # (k and k-min)
     print "time taken: ", time.time() - start_time
-
     print ("number of clusters ", len(cluster.items()))
     #total_molecules = 0
     #for k, v in cluster.items():
@@ -273,7 +275,18 @@ def jp_clustering(mergedFingerprints, k, k_min):
     return cluster_result
 
 
-# LEADER Clustering
+def jp_clustering_neighbours(mergedFingerprints):
+    cluster_gen = jarvispatrick.JarvisPatrick(mergedFingerprints, get_ecfp_sim)
+    return cluster_gen
+
+def jp_clustering_results(cluster_gen, k, k_min):
+    cluster = cluster_gen(k, k_min)
+    cluster_result = [v for k, v in cluster.items()]
+    return cluster_result
+
+#endregion Jarvis Patrick
+
+#region LEADER Clustering
 def leader_algorithm(mergedFingerprints, threshold):
     print "-------------------------------------------------"
     print "starting Leader clustering"
@@ -307,3 +320,39 @@ def leader_algorithm(mergedFingerprints, threshold):
 
     return clusters
 
+def leader_algorithm_ind(mergedFingerprints, threshold):
+    print "-------------------------------------------------"
+    print "starting Leader clustering"
+
+    fp_ids = list(range(len(mergedFingerprints)))
+
+    #print len(mergedFingerprints)
+    start_time = time.time()
+    random.shuffle(fp_ids)
+    clusters = []
+
+    for fp_id in fp_ids:
+        added_to_cluster = False
+
+        for existing_cluster in clusters:
+            similarity = DataStructs.FingerprintSimilarity(mergedFingerprints[fp_id], mergedFingerprints[existing_cluster[0]],
+                                                           metric=DataStructs.TanimotoSimilarity)
+            if similarity >= threshold:
+                existing_cluster.append(fp_id)
+                added_to_cluster = True
+                break
+
+        if added_to_cluster == False:
+            new_cluster = []
+            new_cluster.append(fp_id)
+            clusters.append(new_cluster)
+
+    print "time taken: ", time.time() - start_time
+
+    print ("number of clusters ", len(clusters))
+    total_mols = 0
+    for cluster in clusters:
+        total_mols += len(cluster)
+
+    return clusters
+#endregion LEADER Clustering
