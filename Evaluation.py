@@ -136,6 +136,7 @@ def calculate_f1(clusters, active_fps):
             max_result = [precision, recall, fscore]
 
         results.append([cluster_id, precision, recall, fscore, num_actives, num_decoys])
+        cluster_id += 1
 
     print "Total Actives ", total_actives
     return max_result, results

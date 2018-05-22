@@ -256,6 +256,13 @@ def get_ecfp_sim( fp1, fp2 ):
     tc = DataStructs.FingerprintSimilarity(fp1, fp2,metric=DataStructs.TanimotoSimilarity)
     return tc
 
+def get_ecfp_mol_sim( m1, m2 ):
+    fp1 = AllChem.GetMorganFingerprintAsBitVect( m1, 2 )
+    fp2 = AllChem.GetMorganFingerprintAsBitVect( m2, 2 )
+    #tc = DataStructs.TanimotoSimilarity( fp1, fp2 )
+    tc = DataStructs.FingerprintSimilarity(fp1, fp2,metric=DataStructs.TanimotoSimilarity)
+    return tc
+
 def jp_clustering(mergedFingerprints, k, k_min):
     print "-------------------------------------------------"
     print "starting Jarvis Patrick clustering"
@@ -275,8 +282,8 @@ def jp_clustering(mergedFingerprints, k, k_min):
     return cluster_result
 
 
-def jp_clustering_neighbours(mergedFingerprints):
-    cluster_gen = jarvispatrick.JarvisPatrick(mergedFingerprints, get_ecfp_sim)
+def jp_clustering_neighbours(molecules):
+    cluster_gen = jarvispatrick.JarvisPatrick(molecules, get_ecfp_mol_sim)
     return cluster_gen
 
 def jp_clustering_results(cluster_gen, k, k_min):

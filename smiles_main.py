@@ -7,8 +7,8 @@ import os
 
 
 BUTINA = False
-WARDS = False
-JPCLUSTERING = True
+WARDS = True
+JPCLUSTERING = False
 LEADER = False
 CONVERT = False
 
@@ -23,9 +23,9 @@ def sfd_to_smiles(input_file, output_file):
     writer.close()
 
 if __name__ == "__main__":
-    file = '../mols/compounds5.smi'
+    #file = '../mols/compounds5.smi'
     #file = '../mols/merged/1000ABL1.smi'
-    #file = 'dataset/SmilesMerged/ABL1merged.smi'
+    file = 'dataset/SmilesMerged/ABL1merged.smi'
 
     fingerprints, molecules = read_smiles_mol_fps(file)
     similarity_list = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]
@@ -49,23 +49,29 @@ if __name__ == "__main__":
         print "Finished clustering"
 
         # Wards Clustering
-        i = 10
+        i = 4000
         while i < len(fingerprints):
             ward_clusters = get_hierarchical_level(c_tree[0], i)
             mol_clusters = change_indeces_to_smiles(ward_clusters, molecules)
             output_cluster_results(mol_clusters,'wardResult' + str(i), 'wards')
-            i += 10
+            i += 100
 
     if JPCLUSTERING:
+        #www.daylight.com/dayhtml/doc/cluster/
+        #suggests 16 as default size
         neighbours = 16
         k_min_neighbours = 4
+        #,(16,8),(16,12)
+        parameters = [(16,4)]
         #clusters = jp_clustering(fingerprints, neighbours, k_min_neighbours)
-        cluster_gen = jp_clustering_neighbours(fingerprints)
+        cluster_gen = jp_clustering_neighbours(molecules)
 
-        clusters = jp_clustering_results(cluster_gen, neighbours, k_min_neighbours)
+        for param in parameters:
+            print "Grouping ",param[0], " ", param[1]
+            mol_clusters = jp_clustering_results(cluster_gen, param[0], param[1])
 
-        mol_clusters = change_indeces_to_smiles(clusters, molecules)
-        output_cluster_results(mol_clusters, 'jarvisResult', 'jarvis_pat')
+            #mol_clusters = change_indeces_to_smiles(clusters, molecules)
+            output_cluster_results(mol_clusters, 'jarvisResult_'+str(param[0]) + '_' + str(param[1]), 'jarvis_pat')
 
     if LEADER:
         for similarity_threshold in similarity_list:
